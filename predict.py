@@ -5,8 +5,10 @@ import os
 import numpy as np
 import torch
 import torch.nn.functional as F
-from PIL import Image
+import cv2
 from torchvision import transforms
+import pickle
+import pandas as pd
 
 from unet import UNet
 from utils.data_vis import plot_img_and_mask
@@ -38,7 +40,7 @@ def predict_img(net,
         tf = transforms.Compose(
             [
                 transforms.ToPILImage(),
-                transforms.Resize(full_img.size[1]),
+                transforms.Resize(full_img.shape[1]),
                 transforms.ToTensor()
             ]
         )
@@ -55,15 +57,14 @@ def get_args():
     parser.add_argument('--model', '-m', default='MODEL.pth',
                         metavar='FILE',
                         help="Specify the file in which the model is stored")
-    parser.add_argument('--input', '-i', metavar='INPUT', nargs='+',
-                        help='filenames of input images', required=True)
-
-    parser.add_argument('--output', '-o', metavar='INPUT', nargs='+',
-                        help='Filenames of ouput images')
-    parser.add_argument('--viz', '-v', action='store_true',
+    parser.add_argument('-i', '--input', type=str, default="data/imgs/",
+                        help='Input folder path', dest='input_img')
+    parser.add_argument('-o', '--output', type=str, default="data/imgs/",
+                        help='Output folder path', dest='output_img')
+    parser.add_argument('--viz', '-z', action='store_true',
                         help="Visualize the images as they are processed",
                         default=False)
-    parser.add_argument('--no-save', '-n', action='store_true',
+    parser.add_argument('--no-save', '-v', action='store_true',
                         help="Do not save the output masks",
                         default=False)
     parser.add_argument('--mask-threshold', '-t', type=float,
@@ -72,37 +73,38 @@ def get_args():
     parser.add_argument('--scale', '-s', type=float,
                         help="Scale factor for the input images",
                         default=0.5)
+    parser.add_argument('-n', '--n_channels', type=int, default=3,
+                        help='Number of channels', dest='n_channels')
 
     return parser.parse_args()
 
 
 def get_output_filenames(args):
-    in_files = args.input
+    in_files = args.input_img
     out_files = []
 
-    if not args.output:
+    if not args.output_img:
         for f in in_files:
             pathsplit = os.path.splitext(f)
             out_files.append("{}_OUT{}".format(pathsplit[0], pathsplit[1]))
-    elif len(in_files) != len(args.output):
+    elif len(in_files) != len(args.output_img):
         logging.error("Input files and output files are not of the same length")
         raise SystemExit()
     else:
-        out_files = args.output
+        out_files = args.output_img
 
     return out_files
 
 
 def mask_to_image(mask):
-    return Image.fromarray((mask * 255).astype(np.uint8))
-
+    return (mask * 255).astype(np.uint8)
 
 if __name__ == "__main__":
     args = get_args()
-    in_files = args.input
-    out_files = get_output_filenames(args)
+    in_files = args.input_img
+#     out_files = get_output_filenames(args)
 
-    net = UNet(n_channels=3, n_classes=1)
+    net = UNet(n_channels=args.n_channels, n_classes=1)
 
     logging.info("Loading model {}".format(args.model))
 
@@ -112,11 +114,20 @@ if __name__ == "__main__":
     net.load_state_dict(torch.load(args.model, map_location=device))
 
     logging.info("Model loaded !")
+    
+    try:
+        os.mkdir(args.output_img)
+    except OSError:
+        pass
 
-    for i, fn in enumerate(in_files):
+    for i, fn in enumerate(os.listdir(in_files)):
         logging.info("\nPredicting image {} ...".format(fn))
 
-        img = Image.open(fn)
+        if fn.split('.')[-1] != "pckl":
+            img = cv2.imread(f"{in_files}{fn}", cv2.IMREAD_UNCHANGED)
+        else:
+            with open(f"{in_files}{fn}", 'rb') as img:
+                img = pickle.load(img)
 
         mask = predict_img(net=net,
                            full_img=img,
@@ -125,11 +136,11 @@ if __name__ == "__main__":
                            device=device)
 
         if not args.no_save:
-            out_fn = out_files[i]
+            out_fn = f"{args.output_img}{fn.split('.')[0]}.png"
             result = mask_to_image(mask)
-            result.save(out_files[i])
-
-            logging.info("Mask saved to {}".format(out_files[i]))
+            cv2.imwrite(out_fn, result)
+            
+            logging.info("Mask saved to {}.png".format(fn.split('.')[0]))
 
         if args.viz:
             logging.info("Visualizing results for image {}, close to continue ...".format(fn))

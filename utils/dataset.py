@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import Dataset
 import logging
 import cv2
+import pickle
 
 class BasicDataset(Dataset):
     def __init__(self, imgs_dir, masks_dir, scale=1, mask_suffix=''):
@@ -30,6 +31,9 @@ class BasicDataset(Dataset):
         pil_img = cv2.resize(pil_img,(newW, newH))
 
         img_nd = np.array(pil_img)
+        
+        if len(img_nd.shape) == 2:
+            img_nd = np.expand_dims(img_nd, axis=2)
 
         # HWC to CHW
         img_trans = img_nd.transpose((2, 0, 1))
@@ -47,11 +51,18 @@ class BasicDataset(Dataset):
             f'Either no mask or multiple masks found for the ID {idx}: {mask_file}'
         assert len(img_file) == 1, \
             f'Either no image or multiple images found for the ID {idx}: {img_file}'
-        mask = cv2.imread(mask_file[0])
-        img = cv2.imread(img_file[0])
-
-        assert img.size == mask.size, \
-            f'Image and mask {idx} should be the same size, but are {img.size} and {mask.size}'
+        
+        if mask_file[0].split('.')[-1] != "pckl":
+            mask = cv2.imread(mask_file[0], cv2.IMREAD_UNCHANGED)
+        else:
+            with open(mask_file[0], 'rb') as img:
+                mask = pickle.load(img)
+            
+        if img_file[0].split('.')[-1] != "pckl":
+            img = cv2.imread(img_file[0], cv2.IMREAD_UNCHANGED)
+        else:
+            with open(img_file[0], 'rb') as img:
+                img = pickle.load(img)
 
         img = self.preprocess(img, self.scale)
         mask = self.preprocess(mask, self.scale)

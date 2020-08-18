@@ -4,6 +4,7 @@ import os
 import sys
 
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch import optim
@@ -52,7 +53,8 @@ def train_net(net,
         criterion = nn.CrossEntropyLoss()
     else:
         criterion = nn.BCEWithLogitsLoss()
-
+    
+    val_score_all = []
     for epoch in range(epochs):
         net.train()
 
@@ -71,9 +73,8 @@ def train_net(net,
                 true_masks = true_masks.to(device=device, dtype=mask_type)
 
                 masks_pred = net(imgs)
-#                 print(masks_pred[0:, 0:1, :, :].shape, true_masks.shape)
-#                 loss = criterion(masks_pred, true_masks)
-                loss = criterion(masks_pred[:, 0:1, :, :], true_masks[:, 0:1, :, :])
+                loss = criterion(masks_pred, true_masks)
+#                 loss = criterion(masks_pred[:, 0:1, :, :], true_masks[:, 0:1, :, :])
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
 
@@ -101,7 +102,9 @@ def train_net(net,
                     else:
                         logging.info('Validation Dice Coeff: {}'.format(val_score))
                         writer.add_scalar('Dice/test', val_score, global_step)
-
+                    
+                    val_score_all.append([global_step, epoch+1, val_score])
+                    
                     writer.add_images('images', imgs, global_step)
                     if net.n_classes == 1:
                         writer.add_images('masks/true', true_masks, global_step)
@@ -116,7 +119,9 @@ def train_net(net,
             torch.save(net.state_dict(),
                        dir_checkpoint + f'CP_epoch{epoch + 1}.pth')
             logging.info(f'Checkpoint {epoch + 1} saved !')
-
+            
+            val_score_df = pd.DataFrame(val_score_all, columns = ["global_step", "epoch", "val_score"])
+            val_score_df.to_csv(f'{dir_checkpoint}log.csv', index=False)
     writer.close()
 
 
