@@ -10,7 +10,7 @@ import torch.nn as nn
 from torch import optim
 from tqdm import tqdm
 
-from eval import eval_net
+from eval_loss import eval_net
 from unet import UNet
 
 from torch.utils.tensorboard import SummaryWriter
@@ -54,7 +54,7 @@ def train_net(net,
     if net.n_classes > 1:
         criterion = nn.CrossEntropyLoss()
     else:
-        criterion = nn.BCEWithLogitsLoss()
+        criterion = nn.BCEWithLogitsLoss(reduction='none')
     
     val_score_all = []
     for epoch in range(epochs):
@@ -65,18 +65,23 @@ def train_net(net,
             for batch in train_loader:
                 imgs = batch['image']
                 true_masks = batch['mask']
-                assert imgs.shape[1] == net.n_channels, \
-                    f'Network has been defined with {net.n_channels} input channels, ' \
-                    f'but loaded images have {imgs.shape[1]} channels. Please check that ' \
-                    'the images are loaded correctly.'
+#                 assert imgs.shape[1] == net.n_channels, \
+#                     f'Network has been defined with {net.n_channels} input channels, ' \
+#                     f'but loaded images have {imgs.shape[1]} channels. Please check that ' \
+#                     'the images are loaded correctly.'
 
                 imgs = imgs.to(device=device, dtype=torch.float32)
                 mask_type = torch.float32 if net.n_classes == 1 else torch.long
                 true_masks = true_masks.to(device=device, dtype=mask_type)
+                
+                weight = imgs[:, 1:2, :, :]
+                imgs = imgs[:, 0:1, :, :]
 
                 masks_pred = net(imgs)
                 loss = criterion(masks_pred, true_masks)
-                print(true_masks.shape)
+                loss = 1/(1+torch.exp(weight)) * loss
+                loss = loss.mean()
+
                 epoch_loss += loss.item()
                 writer.add_scalar('Loss/train', loss.item(), global_step)
 

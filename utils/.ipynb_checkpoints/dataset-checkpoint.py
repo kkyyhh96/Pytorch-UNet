@@ -7,17 +7,23 @@ from torch.utils.data import Dataset
 import logging
 import cv2
 import pickle
+import pandas as pd
 
 class BasicDataset(Dataset):
-    def __init__(self, imgs_dir, masks_dir, scale=1, mask_suffix=''):
+    def __init__(self, imgs_dir, masks_dir, scale=1, mask_suffix='', img_pickles=False):
         self.imgs_dir = imgs_dir
         self.masks_dir = masks_dir
         self.scale = scale
         self.mask_suffix = mask_suffix
         assert 0 < scale <= 1, 'Scale must be between 0 and 1'
-
-        self.ids = [splitext(file)[0] for file in listdir(imgs_dir)
-                    if not file.startswith('.')]
+        
+        if img_pickles != False:
+            self.ids = []
+            for id_value in pd.read_pickle(img_pickles).values:
+                self.ids.append(id_value[0])
+        else:
+            self.ids = [splitext(file)[0] for file in listdir(imgs_dir)
+                        if not file.startswith('.')]
         logging.info(f'Creating dataset with {len(self.ids)} examples')
 
     def __len__(self):
@@ -45,7 +51,7 @@ class BasicDataset(Dataset):
     def __getitem__(self, i):
         idx = self.ids[i]
         mask_file = glob(self.masks_dir + idx + self.mask_suffix + '.*')
-        img_file = glob(self.imgs_dir + idx + '.*')
+        img_file = glob(self.imgs_dir + idx + '.*')        
         
         assert len(mask_file) == 1, \
             f'Either no mask or multiple masks found for the ID {idx}: {mask_file}'
